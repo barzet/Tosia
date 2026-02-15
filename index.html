@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gry Tosia</title>
+    <style>
+        :root {
+            --bg: #f0f0f5; --text: #282828; --accent: #2196F3;
+            --doman-red: #E53935; --success: #4CAF50; --error: #F44336;
+        }
+        body, html {
+            margin: 0; padding: 0; height: 100%; font-family: 'Verdana', sans-serif;
+            background-color: var(--bg); color: var(--text); overflow: hidden;
+            display: flex; flex-direction: column; user-select: none;
+            transition: background-color 0.5s;
+        }
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 20px; box-sizing: border-box; z-index: 10;}
+        .active { display: flex; }
+        h1 { font-size: 2.5rem; margin-bottom: 30px; }
+        
+        .big-word { font-size: 4.5rem; font-weight: bold; color: var(--doman-red); margin: 30px 0; }
+        .big-emoji { font-size: 8rem; margin: 20px 0; line-height: 1; }
+        .syllable-target { background: var(--accent); color: white; padding: 20px 40px; border-radius: 20px; font-size: 4rem; margin-bottom: 30px; font-weight: bold; transition: all 0.5s;}
+        
+        .options-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; width: 100%; max-width: 800px;}
+        .btn {
+            background: white; border: 3px solid var(--text); border-radius: 20px;
+            padding: 20px 40px; font-size: 2rem; font-weight: bold; color: var(--text);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.2); cursor: pointer; transition: all 0.2s;
+        }
+        .btn:active { transform: translate(4px, 4px); box-shadow: none; }
+        .btn-menu { width: 100%; max-width: 400px; margin-bottom: 20px; }
+        
+        .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 20px; z-index: 20;}
+        .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
+        .score-display { font-size: 1.5rem; font-weight: bold; }
+        
+        .medals { position: absolute; bottom: 20px; left: 20px; font-size: 2.2rem; font-weight: bold; pointer-events: none; background: rgba(255, 255, 255, 0.7); padding: 5px 15px; border-radius: 15px; z-index: 20;}
+        .btn-reset { position: absolute; bottom: 20px; right: 20px; font-size: 2rem; background: transparent; border: none; opacity: 0.15; cursor: pointer; z-index: 20;}
+
+        .confetti { position: absolute; width: 15px; height: 15px; background-color: #f2d74e; opacity: 0; z-index: 5;}
+        @keyframes fall {
+            0% { opacity: 1; transform: translateY(-100px) rotate(0deg); }
+            100% { opacity: 1; transform: translateY(100vh) rotate(720deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <button id="btn-back" class="btn-back" style="display:none;" onclick="goToMenu()">🔙 Wróć</button>
+        <div class="score-display">Punkty: <span id="score-text">0</span></div>
+    </div>
+    
+    <div class="medals" id="medals-container" style="display: none;"></div>
+    <button class="btn-reset" onclick="resetScore()">🔄</button>
+
+    <div id="screen-main" class="screen active">
+        <h1>Wybierz Zabawę:</h1>
+        <button class="btn btn-menu" onclick="showScreen('screen-doman'); speakText('Zabawy ze słowami. Wybierz grę.')">Zabawy ze Słowami</button>
+        <button class="btn btn-menu" onclick="showScreen('screen-syllable'); speakText('Zabawy z sylabami. Wybierz grę.')">Zabawy z Sylabami</button>
+    </div>
+
+    <div id="screen-doman" class="screen">
+        <h1>Metoda Domana:</h1>
+        <button class="btn btn-menu" onclick="startGame('doman', 'picture')">1. Obrazek ➡️ Słowo</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'flash')">2. Mrugające Słowo</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'intruder')">3. Znajdź Intruza</button>
+    </div>
+
+    <div id="screen-syllable" class="screen">
+        <h1>Metoda Sylabowa:</h1>
+        <button class="btn btn-menu" onclick="startGame('syllable', 'ending')">1. Dopasuj Końcówkę</button>
+        <button class="btn btn-menu" onclick="startGame('syllable', 'first')">2. Pierwsza Sylaba</button>
+    </div>
+
+    <div id="screen-game" class="screen">
+        <h2 id="game-instruction">Polecenie</h2>
+        <div id="game-target"></div> 
+        <div id="game-options" class="options-grid"></div> 
+    </div>
+
+    <script>
+        const DICT = {
+            "KOT": { emoji: "🐈", en: "CAT", sylaby: ["KOT"] },
+            "PIES": { emoji: "🐕", en: "DOG", sylaby: ["PIES"] },
+            "KROWA": { emoji: "🐄", en: "COW", sylaby: ["KRO", "WA"] },
+            "JABŁKO": { emoji: "🍎", en: "APPLE", sylaby: ["JA", "BŁKO"] },
+            "AUTO": { emoji: "🚗", en: "CAR", sylaby: ["AU", "TO"] },
+            "BANAN": { emoji: "🍌", en: "BANANA", sylaby: ["BA", "NAN"] },
+            "DOM": { emoji: "🏠", en: "HOUSE", sylaby: ["DOM"] },
+            "WODA": { emoji: "💧", en: "WATER", sylaby: ["WO", "DA"] },
+            "RYBA": { emoji: "🐟", en: "FISH", sylaby: ["RY", "BA"] },
+            "LALKA": { emoji: "🪆", en: "DOLL", sylaby: ["LAL", "KA"] },
+            "SOWA": { emoji: "🦉", en: "OWL", sylaby: ["SO", "WA"] },
+            "KURA": { emoji: "🐔", en: "HEN", sylaby: ["KU", "RA"] }
+        };
+
+        const allWords = Object.keys(DICT);
+        const multiSyllableWords = allWords.filter(w => DICT[w].sylaby.length > 1);
+
+        let globalScore = parseInt(localStorage.getItem('tosiaScore')) || 0;
+        let activeGame = null;
+        let currentTargetWord = ""; 
+        let comboCount = 0;
+        let mistakeCount = 0;
+        
+        updateScoreUI();
+
+        /* ==========================================
+           CZYSTY LEKTOR (Tylko hack na sylaby, 
+           brak wymuszania głosu z kodu - Zosia wróci!)
+           ========================================== */
+        function speakText(text, callback) {
+            window.speechSynthesis.cancel();
+            
+            // HACK: Małe litery + kropka, by robot nie literował sylab (np. "W-A")
+            const textForRobot = text.toLowerCase() + ".";
+            
+            const msg = new SpeechSynthesisUtterance(textForRobot);
+            msg.lang = 'pl-PL'; 
+            msg.rate = 0.9;
+            
+            // Usunąłem linijkę "msg.voice = bestVoice", dzięki czemu iOS użyje domyślnej Zosi Premium!
+            
+            if (callback) {
+                const fallbackTime = (text.length * 90) + 1200; 
+                let fired = false;
+                
+                msg.onend = () => { if(!fired){ fired = true; callback(); } };
+                setTimeout(() => { if(!fired){ fired = true; callback(); } }, fallbackTime);
+            }
+            window.speechSynthesis.speak(msg);
+        }
+
+        /* --- SYSTEM NAGRÓD --- */
+        function createConfetti() {
+            const colors = ['#f2d74e', '#95c3de', '#ff9a91', '#4caf50', '#2196F3'];
+            for (let i = 0; i < 50; i++) {
+                let conf = document.createElement('div');
+                conf.className = 'confetti';
+                conf.style.left = Math.random() * 100 + 'vw';
+                conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                conf.style.animation = `fall ${Math.random() * 2 + 2}s linear forwards`;
+                document.body.appendChild(conf);
+                setTimeout(() => conf.remove(), 4000); 
+            }
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            document.getElementById('btn-back').style.display = screenId === 'screen-main' ? 'none' : 'block';
+        }
+        function goToMenu() { showScreen('screen-main'); }
+
+        function updateScoreUI() {
+            document.getElementById('score-text').innerText = globalScore;
+            const medalsCount = Math.floor(globalScore / 3);
+            const mc = document.getElementById('medals-container');
+            if (medalsCount > 0) { mc.style.display = 'block'; mc.innerText = '🌟 x ' + medalsCount; } 
+            else { mc.style.display = 'none'; }
+        }
+
+        function resetScore() {
+            if(confirm("Wyzerować punkty Tosi?")) {
+                globalScore = 0; localStorage.setItem('tosiaScore', 0); updateScoreUI();
+            }
+        }
+
+        function triggerFeedback(isSuccess) {
+            document.body.style.backgroundColor = isSuccess ? 'var(--success)' : 'var(--error)';
+            setTimeout(() => document.body.style.backgroundColor = 'var(--bg)', 600);
+        }
+        function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
+
+        /* --- LOGIKA GRY --- */
+        function startGame(type, mode) {
+            comboCount = 0; 
+            showScreen('screen-game');
+            activeGame = { type, mode };
+            nextRound();
+        }
+
+        function nextRound() {
+            mistakeCount = 0;
+            const targetEl = document.getElementById('game-target');
+            const optionsEl = document.getElementById('game-options');
+            const instrEl = document.getElementById('game-instruction');
+            targetEl.innerHTML = ''; optionsEl.innerHTML = '';
+            
+            if (activeGame.type === 'doman') {
+                currentTargetWord = allWords[Math.floor(Math.random() * allWords.length)];
+                let data = DICT[currentTargetWord];
+                
+                if (activeGame.mode === 'picture') {
+                    instrEl.innerText = "Co to za obrazek?";
+                    speakText("Co to za obrazek?");
+                    targetEl.innerHTML = `<div class="big-emoji">${data.emoji}</div>`;
+                    let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, 2);
+                    renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                }
+                else if (activeGame.mode === 'flash') {
+                    instrEl.innerText = "Spójrz uważnie...";
+                    targetEl.innerHTML = `<div class="big-word">${currentTargetWord}</div>`;
+                    setTimeout(() => {
+                        targetEl.innerHTML = '';
+                        instrEl.innerText = "Gdzie było to słowo?";
+                        speakText("Gdzie było to słowo?");
+                        let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, 2);
+                        renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                    }, 2000);
+                } 
+                else if (activeGame.mode === 'intruder') {
+                    let wrongWords = shuffle(allWords.filter(w => w !== currentTargetWord));
+                    let intruder = wrongWords[0];
+                    currentTargetWord = intruder; 
+                    
+                    instrEl.innerText = "Które słowo nie pasuje?";
+                    speakText("Które słowo nie pasuje?");
+                    renderOptions([wrongWords[1], wrongWords[1], wrongWords[1], intruder], intruder);
+                }
+            } 
+            else if (activeGame.type === 'syllable') {
+                currentTargetWord = multiSyllableWords[Math.floor(Math.random() * multiSyllableWords.length)];
+                let syl = DICT[currentTargetWord].sylaby;
+                
+                if (activeGame.mode === 'ending') {
+                    instrEl.innerText = "Dopasuj końcówkę:";
+                    speakText("Dopasuj końcówkę.");
+                    targetEl.innerHTML = `<div class="syllable-target">${syl[0]}</div>`;
+                    
+                    let otherEndings = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[1]);
+                    let wrong = shuffle(otherEndings).slice(0, 2);
+                    renderOptions([syl[1], ...wrong], syl[1]);
+                } 
+                else if (activeGame.mode === 'first') {
+                    instrEl.innerText = "Z jakiej sylaby składa się to słowo?";
+                    speakText("Z jakiej sylaby składa się to słowo?");
+                    targetEl.innerHTML = `<div class="syllable-target">${currentTargetWord}</div>`;
+                    
+                    let otherFirsts = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[0]);
+                    let wrong = shuffle(otherFirsts).slice(0, 2);
+                    renderOptions([syl[0], ...wrong], syl[0]);
+                }
+            }
+        }
+
+        function renderOptions(optionsArray, correctAnswer) {
+            const optionsEl = document.getElementById('game-options');
+            shuffle(optionsArray).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.innerText = opt;
+                btn.onclick = () => checkAnswer(opt, correctAnswer, btn);
+                optionsEl.appendChild(btn);
+            });
+        }
+
+        /* --- ZAAWANSOWANA SEKWENCJA AUDIO I WIZUALNA --- */
+        function checkAnswer(selected, correct, btnElement) {
+            const allBtns = document.querySelectorAll('.options-grid .btn');
+            allBtns.forEach(b => b.style.pointerEvents = 'none');
+
+            const isCorrect = (selected === correct);
+
+            // 1. ZAWSZE CZYTAMY TO CO DZIECKO KLIKNĘŁO
+            speakText(selected, () => {
+                
+                if (isCorrect) {
+                    comboCount++;
+                    let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
+                    
+                    if (comboCount % 5 === 0) {
+                        praise = "Ale z ciebie bystrzacha! Wspaniale!";
+                        createConfetti(); 
+                    }
+
+                    // 2. SPECJALNA ŚCIEŻKA DLA SYLAB
+                    if (activeGame.type === 'syllable') {
+                        const syls = DICT[currentTargetWord].sylaby;
+                        
+                        document.getElementById('game-target').innerHTML = `<div class="syllable-target" style="background-color: var(--success);">${syls.join(' - ')}</div>`;
+                        
+                        speakText(currentTargetWord, () => {
+                            triggerFeedback(true);
+                            speakText(praise, () => {
+                                globalScore++;
+                                localStorage.setItem('tosiaScore', globalScore);
+                                updateScoreUI();
+                                nextRound();
+                            });
+                        });
+                    } else {
+                        // ZWYKŁA ŚCIEŻKA DLA DOMANA
+                        triggerFeedback(true);
+                        speakText(praise, () => {
+                            globalScore++;
+                            localStorage.setItem('tosiaScore', globalScore);
+                            updateScoreUI();
+                            nextRound();
+                        });
+                    }
+
+                } else {
+                    comboCount = 0;
+                    mistakeCount++;
+                    triggerFeedback(false);
+
+                    if (mistakeCount >= 2) {
+                        allBtns.forEach(b => {
+                            if (b.innerText !== correct) b.style.opacity = '0.3';
+                            else b.style.transform = 'scale(1.1)';
+                        });
+                        speakText("Pomogę ci. Zobacz, to to słowo.", () => {
+                            allBtns.forEach(b => b.style.pointerEvents = 'auto');
+                        });
+                    } else {
+                        speakText("Spróbuj jeszcze raz.", () => {
+                            allBtns.forEach(b => b.style.pointerEvents = 'auto');
+                        });
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
