@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gry Tosia 2.0</title>
+    <style>
+        /* --- WARSTWA WIZUALNA (CSS) --- */
+        :root {
+            --bg: #f0f0f5; --text: #282828; --accent: #2196F3;
+            --doman-red: #E53935; --success: #4CAF50; --error: #F44336;
+        }
+        body, html {
+            margin: 0; padding: 0; height: 100%; font-family: 'Verdana', sans-serif;
+            background-color: var(--bg); color: var(--text); overflow: hidden;
+            display: flex; flex-direction: column; user-select: none;
+            transition: background-color 0.5s;
+        }
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 20px; box-sizing: border-box; z-index: 10; }
+        .active { display: flex; }
+        h1 { font-size: 2.5rem; margin-bottom: 30px; }
+        
+        .big-word { font-size: 4.5rem; font-weight: bold; color: var(--doman-red); margin: 30px 0; }
+        .big-emoji { font-size: 8rem; margin: 20px 0; line-height: 1; }
+        .syllable-target { background: var(--accent); color: white; padding: 20px 40px; border-radius: 20px; font-size: 4rem; margin-bottom: 30px; font-weight: bold;}
+        
+        .options-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; width: 100%; max-width: 800px;}
+        .btn {
+            background: white; border: 3px solid var(--text); border-radius: 20px;
+            padding: 20px 40px; font-size: 2rem; font-weight: bold; color: var(--text);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.1s, opacity 0.3s;
+        }
+        .btn:active { transform: translate(4px, 4px); box-shadow: none; }
+        .btn-menu { width: 100%; max-width: 400px; margin-bottom: 20px; }
+        
+        .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 20px; z-index: 20; }
+        .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
+        .score-display { font-size: 1.5rem; font-weight: bold; }
+        
+        .medals { position: absolute; bottom: 20px; left: 20px; font-size: 2.2rem; font-weight: bold; pointer-events: none; background: rgba(255, 255, 255, 0.7); padding: 5px 15px; border-radius: 15px; z-index: 20; }
+        .btn-reset { position: absolute; bottom: 20px; right: 20px; font-size: 2rem; background: transparent; border: none; opacity: 0.15; cursor: pointer; z-index: 20; }
+
+        /* --- ANIMACJE EDUKACYJNE --- */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        .shake { animation: shake 0.4s ease-in-out; border-color: var(--error); color: var(--error); }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(76, 175, 80, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+        .hint-pulse { animation: pulse 1.5s infinite; border-color: var(--success); }
+
+        /* --- KONFETTI --- */
+        #confetti-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; overflow: hidden; }
+        .confetti-piece { position: absolute; width: 15px; height: 15px; opacity: 0; }
+        @keyframes fall {
+            0% { opacity: 1; top: -10%; transform: rotateZ(0deg) rotateX(0deg); }
+            100% { opacity: 1; top: 110%; transform: rotateZ(360deg) rotateX(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="confetti-container"></div>
+
+    <div class="top-bar">
+        <button id="btn-back" class="btn-back" style="display:none;" onclick="goToMenu()">🔙 Wróć</button>
+        <div class="score-display">Punkty: <span id="score-text">0</span></div>
+    </div>
+    
+    <div class="medals" id="medals-container" style="display: none;"></div>
+    <button class="btn-reset" onclick="resetScore()">🔄</button>
+
+    <div id="screen-main" class="screen active">
+        <h1>Wybierz Zabawę:</h1>
+        <button class="btn btn-menu" onclick="showScreen('screen-doman'); speak('Zabawy ze słowami. Wybierz grę.')">Zabawy ze Słowami</button>
+        <button class="btn btn-menu" onclick="showScreen('screen-syllable'); speak('Zabawy z sylabami. Wybierz grę.')">Zabawy z Sylabami</button>
+    </div>
+
+    <div id="screen-doman" class="screen">
+        <h1>Metoda Domana:</h1>
+        <button class="btn btn-menu" onclick="startGame('doman', 'picture')">1. Obrazek ➡️ Słowo</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'flash')">2. Mrugające Słowo</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'intruder')">3. Znajdź Intruza</button>
+    </div>
+
+    <div id="screen-syllable" class="screen">
+        <h1>Metoda Sylabowa:</h1>
+        <button class="btn btn-menu" onclick="startGame('syllable', 'ending')">1. Dopasuj Końcówkę</button>
+        <button class="btn btn-menu" onclick="startGame('syllable', 'first')">2. Pierwsza Sylaba</button>
+    </div>
+
+    <div id="screen-game" class="screen">
+        <h2 id="game-instruction">Polecenie</h2>
+        <div id="game-target"></div> 
+        <div id="game-options" class="options-grid"></div> 
+    </div>
+
+    <script>
+        /* ==========================================
+           Baza Danych (Gotowa na wyeksportowanie do JSON)
+           ========================================== */
+        const DATABASE = {
+            "KOT": { emoji: "🐈", syllables: ["KOT"] },
+            "PIES": { emoji: "🐕", syllables: ["PIES"] },
+            "KROWA": { emoji: "🐄", syllables: ["KRO", "WA"] },
+            "SOWA": { emoji: "🦉", syllables: ["SO", "WA"] },
+            "RYBA": { emoji: "🐟", syllables: ["RY", "BA"] },
+            "KURA": { emoji: "🐔", syllables: ["KU", "RA"] },
+            "ŻABA": { emoji: "🐸", syllables: ["ŻA", "BA"] },
+            "JABŁKO": { emoji: "🍎", syllables: ["JA", "BŁKO"] },
+            "BANAN": { emoji: "🍌", syllables: ["BA", "NAN"] },
+            "WODA": { emoji: "💧", syllables: ["WO", "DA"] },
+            "AUTO": { emoji: "🚗", syllables: ["AU", "TO"] },
+            "DOM": { emoji: "🏠", syllables: ["DOM"] },
+            "LALKA": { emoji: "🪆", syllables: ["LAL", "KA"] },
+            "MAMA": { emoji: "👩", syllables: ["MA", "MA"] },
+            "TATA": { emoji: "👨", syllables: ["TA", "TA"] }
+        };
+
+        const allWords = Object.keys(DATABASE);
+        // Filtrujemy tylko te słowa, które mają więcej niż 1 sylabę (do gier sylabowych)
+        const multiSyllableWords = allWords.filter(w => DATABASE[w].syllables.length > 1);
+
+        /* ==========================================
+           Stan Gry i System Motywacji
+           ========================================== */
+        let globalScore = parseInt(localStorage.getItem('tosiaScore')) || 0;
+        let currentStreak = 0;       // Licznik Combo
+        let mistakesThisRound = 0;   // Licznik błędów do systemu podpowiedzi
+        let activeGame = null;
+        updateScoreUI();
+
+        function speak(text) {
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'pl-PL'; msg.rate = 0.9;
+            window.speechSynthesis.speak(msg);
+        }
+
+        function triggerConfetti() {
+            const container = document.getElementById('confetti-container');
+            container.innerHTML = '';
+            const colors = ['#fce18a', '#ff726d', '#b48def', '#f4306d', '#4CAF50', '#2196F3'];
+            for(let i=0; i<60; i++) {
+                const conf = document.createElement('div');
+                conf.className = 'confetti-piece';
+                conf.style.left = Math.random() * 100 + 'vw';
+                conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                conf.style.animation = `fall ${Math.random() * 2 + 2}s linear ${Math.random() * 0.5}s forwards`;
+                container.appendChild(conf);
+            }
+            setTimeout(() => container.innerHTML = '', 4000); // Czyszczenie po animacji
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            document.getElementById('btn-back').style.display = screenId === 'screen-main' ? 'none' : 'block';
+        }
+
+        function goToMenu() { showScreen('screen-main'); }
+
+        function updateScoreUI() {
+            document.getElementById('score-text').innerText = globalScore;
+            const medalsCount = Math.floor(globalScore / 3);
+            const medalsContainer = document.getElementById('medals-container');
+            if (medalsCount > 0) {
+                medalsContainer.style.display = 'block';
+                medalsContainer.innerText = '🌟 x ' + medalsCount;
+            } else {
+                medalsContainer.style.display = 'none';
+            }
+        }
+
+        function resetScore() {
+            if(confirm("Tato, czy na pewno chcesz wyzerować punkty Tosi?")) {
+                globalScore = 0; currentStreak = 0;
+                localStorage.setItem('tosiaScore', globalScore);
+                updateScoreUI();
+            }
+        }
+
+        function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
+
+        /* ==========================================
+           Logika Gier
+           ========================================== */
+        function startGame(type, mode) {
+            showScreen('screen-game');
+            activeGame = { type, mode };
+            nextRound();
+        }
+
+        function nextRound() {
+            mistakesThisRound = 0; // Reset błędów nowej rundy
+            const targetEl = document.getElementById('game-target');
+            const optionsEl = document.getElementById('game-options');
+            const instrEl = document.getElementById('game-instruction');
+            targetEl.innerHTML = ''; optionsEl.innerHTML = '';
+            
+            if (activeGame.type === 'doman') {
+                const targetWord = allWords[Math.floor(Math.random() * allWords.length)];
+                
+                if (activeGame.mode === 'picture') {
+                    instrEl.innerText = "Co to za obrazek?";
+                    speak("Co to za obrazek? Wybierz słowo.");
+                    targetEl.innerHTML = `<div class="big-emoji">${DATABASE[targetWord].emoji}</div>`;
+                    let wrong = shuffle(allWords.filter(w => w !== targetWord)).slice(0, 2);
+                    renderOptions([targetWord, ...wrong], targetWord);
+                }
+                else if (activeGame.mode === 'flash') {
+                    instrEl.innerText = "Spójrz uważnie...";
+                    targetEl.innerHTML = `<div class="big-word">${targetWord}</div>`;
+                    setTimeout(() => {
+                        targetEl.innerHTML = '';
+                        instrEl.innerText = "Gdzie było to słowo?";
+                        speak("Gdzie było to słowo?");
+                        let wrong = shuffle(allWords.filter(w => w !== targetWord)).slice(0, 2);
+                        renderOptions([targetWord, ...wrong], targetWord);
+                    }, 2000);
+                } 
+                else if (activeGame.mode === 'intruder') {
+                    instrEl.innerText = "Które słowo nie pasuje?";
+                    speak("Które słowo nie pasuje?");
+                    // NAPRAWIONY INTRUZ - Losuje z całej reszty puli
+                    const possibleIntruders = allWords.filter(w => w !== targetWord);
+                    const intruder = possibleIntruders[Math.floor(Math.random() * possibleIntruders.length)];
+                    renderOptions([targetWord, targetWord, targetWord, intruder], intruder);
+                }
+            } 
+            else if (activeGame.type === 'syllable') {
+                const targetWord = multiSyllableWords[Math.floor(Math.random() * multiSyllableWords.length)];
+                const firstPart = DATABASE[targetWord].syllables[0];
+                const secondPart = DATABASE[targetWord].syllables[1];
+                
+                // Szukamy błędnych sylab z innych słów
+                const otherWords = multiSyllableWords.filter(w => w !== targetWord);
+
+                if (activeGame.mode === 'ending') {
+                    instrEl.innerText = "Dopasuj końcówkę:";
+                    speak("Dopasuj końcówkę.");
+                    targetEl.innerHTML = `<div class="syllable-target">${firstPart}</div>`;
+                    let wrong = shuffle(otherWords).slice(0, 2).map(w => DATABASE[w].syllables[1]);
+                    renderOptions([secondPart, ...wrong], secondPart);
+                } 
+                else if (activeGame.mode === 'first') {
+                    instrEl.innerText = "Z jakiej sylaby składa się to słowo?";
+                    speak("Z jakiej sylaby składa się to słowo?");
+                    targetEl.innerHTML = `<div class="syllable-target">${targetWord}</div>`;
+                    let wrong = shuffle(otherWords).slice(0, 2).map(w => DATABASE[w].syllables[0]);
+                    renderOptions([firstPart, ...wrong], firstPart);
+                }
+            }
+        }
+
+        function renderOptions(optionsArray, correctAnswer) {
+            const optionsEl = document.getElementById('game-options');
+            shuffle(optionsArray).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.innerText = opt;
+                btn.onclick = function() { checkAnswer(opt, correctAnswer, this); };
+                optionsEl.appendChild(btn);
+            });
+        }
+
+        function checkAnswer(selected, correct, btnElement) {
+            if (selected === correct) {
+                globalScore++;
+                currentStreak++;
+                localStorage.setItem('tosiaScore', globalScore);
+                updateScoreUI();
+                
+                document.body.style.backgroundColor = 'var(--success)';
+                setTimeout(() => document.body.style.backgroundColor = 'var(--bg)', 500);
+
+                // MEGA NAGRODA (COMBO 5)
+                if (currentStreak > 0 && currentStreak % 5 === 0) {
+                    triggerConfetti();
+                    const megaPraises = ["Niesamowite! Pięć razy z rzędu!", "Tosia, jesteś genialna!", "Ale z Ciebie bystrzacha!"];
+                    speak(megaPraises[Math.floor(Math.random() * megaPraises.length)]);
+                } else {
+                    const praises = ["Super!", "Brawo Tosia!", "Świetnie!"];
+                    speak(praises[Math.floor(Math.random() * praises.length)]);
+                }
+                
+                // Blokujemy przyciski po wygranej, żeby nie klikała podwójnie
+                document.querySelectorAll('#game-options .btn').forEach(b => b.style.pointerEvents = 'none');
+                setTimeout(nextRound, 1200);
+
+            } else {
+                currentStreak = 0; // Reset combo
+                mistakesThisRound++;
+                
+                document.body.style.backgroundColor = 'var(--error)';
+                setTimeout(() => document.body.style.backgroundColor = 'var(--bg)', 500);
+
+                // SYSTEM EMPATYCZNYCH PODPOWIEDZI
+                if (mistakesThisRound >= 2) {
+                    speak("Pomogę Ci. Zobacz, to jest prawidłowa odpowiedź.");
+                    document.querySelectorAll('#game-options .btn').forEach(btn => {
+                        if (btn.innerText !== correct) {
+                            btn.style.opacity = '0.3';
+                            btn.style.pointerEvents = 'none';
+                        } else {
+                            btn.classList.add('hint-pulse');
+                        }
+                    });
+                } else {
+                    speak("Spróbuj jeszcze raz.");
+                    // Animacja trzęsienia się błędnego klocka
+                    btnElement.classList.add('shake');
+                    setTimeout(() => btnElement.classList.remove('shake'), 400);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
