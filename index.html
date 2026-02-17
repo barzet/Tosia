@@ -23,7 +23,6 @@
         .big-emoji { font-size: 8rem; margin: 20px 0; line-height: 1; }
         .syllable-target { background: var(--accent); color: white; padding: 20px 40px; border-radius: 20px; font-size: 4rem; margin-bottom: 30px; font-weight: bold; transition: all 0.5s;}
         
-        /* NOWOŚĆ: Przycisk powtórzenia dźwięku */
         .btn-listen { font-size: 6rem; background: none; border: none; cursor: pointer; margin: 20px 0; transition: transform 0.2s; filter: drop-shadow(0px 4px 0px rgba(0,0,0,0.2)); }
         .btn-listen:active { transform: scale(0.9) translateY(4px); filter: drop-shadow(0px 0px 0px rgba(0,0,0,0)); }
 
@@ -129,12 +128,14 @@
         let comboCount = 0;
         let mistakeCount = 0;
         let roundNumber = 0;
+        let roundTimeout = null; // Zabezpieczenie przed "Grami Duchów"
         
         updateScoreUI();
         document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
 
         function speakText(text, callback) {
             window.speechSynthesis.cancel();
+            if(!text) text = ""; // Zabezpieczenie na wypadek braku tekstu
             const textForRobot = text.toLowerCase() + ".";
             const msg = new SpeechSynthesisUtterance(textForRobot);
             msg.lang = 'pl-PL'; 
@@ -176,7 +177,15 @@
             document.getElementById('btn-back').style.display = (screenId === 'screen-main' || screenId === 'screen-settings') ? 'none' : 'block';
             document.getElementById('btn-settings').style.display = (screenId === 'screen-main') ? 'block' : 'none';
         }
-        function goToMenu() { showScreen('screen-main'); }
+        
+        function goToMenu() { 
+            // Ubijanie wszystkich aktywności przy wyjściu do menu!
+            activeGame = null;
+            window.speechSynthesis.cancel();
+            if(roundTimeout) clearTimeout(roundTimeout);
+            
+            showScreen('screen-main'); 
+        }
 
         function updateScoreUI() {
             document.getElementById('score-text').innerText = globalScore;
@@ -196,4 +205,176 @@
             document.body.style.backgroundColor = isSuccess ? 'var(--success)' : 'var(--error)';
             setTimeout(() => document.body.style.backgroundColor = 'var(--bg)', 600);
         }
-        function shuffle(array) { return [...array].sort(() => Math.random() -
+        function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
+
+        function startGame(type, mode) {
+            comboCount = 0; 
+            roundNumber = 0; 
+            showScreen('screen-game');
+            activeGame = { type, mode };
+            nextRound();
+        }
+
+        function nextRound() {
+            // Zabezpieczenie: jeśli wyszliśmy do menu w międzyczasie, zatrzymaj generowanie rundy
+            if (!activeGame) return; 
+
+            mistakeCount = 0;
+            roundNumber++; 
+            const isFirstRound = (roundNumber === 1); 
+
+            const targetEl = document.getElementById('game-target');
+            const optionsEl = document.getElementById('game-options');
+            const instrEl = document.getElementById('game-instruction');
+            targetEl.innerHTML = ''; optionsEl.innerHTML = '';
+            
+            if (activeGame.type === 'doman') {
+                currentTargetWord = allWords[Math.floor(Math.random() * allWords.length)];
+                let data = DICT[currentTargetWord];
+                
+                if (activeGame.mode === 'picture') {
+                    instrEl.innerText = "Co to za obrazek?";
+                    if(isFirstRound) speakText("Co to za obrazek?"); 
+                    targetEl.innerHTML = `<div class="big-emoji">${data.emoji}</div>`;
+                    let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, optionsCount - 1);
+                    renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                }
+                else if (activeGame.mode === 'flash') {
+                    instrEl.innerText = "Spójrz uważnie...";
+                    targetEl.innerHTML = `<div class="big-word">${currentTargetWord}</div>`;
+                    roundTimeout = setTimeout(() => {
+                        if (!activeGame) return; // Zabezpieczenie przed grą duchów
+                        targetEl.innerHTML = '';
+                        instrEl.innerText = "Gdzie było to słowo?";
+                        if(isFirstRound) speakText("Gdzie było to słowo?");
+                        let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, optionsCount - 1);
+                        renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                    }, 2000);
+                } 
+                else if (activeGame.mode === 'intruder') {
+                    let wrongWords = shuffle(allWords.filter(w => w !== currentTargetWord));
+                    let intruder = wrongWords[0];
+                    currentTargetWord = intruder; 
+                    
+                    instrEl.innerText = "Które słowo nie pasuje?";
+                    if(isFirstRound) speakText("Które słowo nie pasuje?");
+                    
+                    let options = Array(optionsCount - 1).fill(wrongWords[1]);
+                    options.push(intruder);
+                    renderOptions(options, intruder);
+                }
+                else if (activeGame.mode === 'listen') {
+                    instrEl.innerText = "Posłuchaj uważnie:";
+                    
+                    targetEl.innerHTML = `<button class="btn-listen" onclick="speakText('${currentTargetWord}')">🔊</button>`;
+                    
+                    if(isFirstRound) {
+                        speakText("Posłuchaj i wybierz.", () => speakText(currentTargetWord)); 
+                    } else {
+                        speakText(currentTargetWord);
+                    }
+
+                    let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, optionsCount - 1);
+                    renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                }
+            } 
+            else if (activeGame.type === 'syllable') {
+                currentTargetWord = multiSyllableWords[Math.floor(Math.random() * multiSyllableWords.length)];
+                let syl = DICT[currentTargetWord].sylaby;
+                
+                if (activeGame.mode === 'ending') {
+                    instrEl.innerText = "Dopasuj końcówkę:";
+                    if(isFirstRound) speakText("Dopasuj końcówkę.");
+                    
+                    targetEl.innerHTML = `<div class="syllable-target">${syl[0]}</div>`;
+                    let otherEndings = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[1]);
+                    let wrong = shuffle(otherEndings).slice(0, optionsCount - 1);
+                    renderOptions([syl[1], ...wrong], syl[1]);
+                } 
+                else if (activeGame.mode === 'first') {
+                    instrEl.innerText = "Z jakiej sylaby składa się to słowo?";
+                    if(isFirstRound) speakText("Z jakiej sylaby składa się to słowo?");
+                    
+                    targetEl.innerHTML = `<div class="syllable-target">${currentTargetWord}</div>`;
+                    let otherFirsts = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[0]);
+                    let wrong = shuffle(otherFirsts).slice(0, optionsCount - 1);
+                    renderOptions([syl[0], ...wrong], syl[0]);
+                }
+            }
+        }
+
+        function renderOptions(optionsArray, correctAnswer) {
+            const optionsEl = document.getElementById('game-options');
+            shuffle(optionsArray).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.innerText = opt;
+                btn.onclick = () => checkAnswer(opt, correctAnswer, btn);
+                optionsEl.appendChild(btn);
+            });
+        }
+
+        function checkAnswer(selected, correct, btnElement) {
+            // POPRAWKA: Blokujemy tylko klocki W GRZE, a nie w całej aplikacji!
+            const gameBtns = document.querySelectorAll('#game-options .btn');
+            gameBtns.forEach(b => b.style.pointerEvents = 'none');
+
+            const isCorrect = (selected === correct);
+
+            speakText(selected, () => {
+                if (isCorrect) {
+                    comboCount++;
+                    let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
+                    
+                    if (comboCount % 5 === 0) {
+                        praise = "Ale z ciebie bystrzacha! Wspaniale!";
+                        createConfetti(); 
+                    }
+
+                    if (activeGame && activeGame.type === 'syllable') {
+                        const syls = DICT[currentTargetWord].sylaby;
+                        document.getElementById('game-target').innerHTML = `<div class="syllable-target" style="background-color: var(--success);">${syls.join(' - ')}</div>`;
+                        
+                        speakText(currentTargetWord, () => {
+                            triggerFeedback(true);
+                            speakText(praise, () => {
+                                globalScore++;
+                                localStorage.setItem('tosiaScore', globalScore);
+                                updateScoreUI();
+                                roundTimeout = setTimeout(nextRound, 1000);
+                            });
+                        });
+                    } else {
+                        triggerFeedback(true);
+                        speakText(praise, () => {
+                            globalScore++;
+                            localStorage.setItem('tosiaScore', globalScore);
+                            updateScoreUI();
+                            roundTimeout = setTimeout(nextRound, 1000);
+                        });
+                    }
+
+                } else {
+                    comboCount = 0;
+                    mistakeCount++;
+                    triggerFeedback(false);
+
+                    if (mistakeCount >= 2) {
+                        gameBtns.forEach(b => {
+                            if (b.innerText !== correct) b.style.opacity = '0.3';
+                            else b.style.transform = 'scale(1.1)';
+                        });
+                        speakText("Pomogę ci. Zobacz, to to słowo.", () => {
+                            gameBtns.forEach(b => b.style.pointerEvents = 'auto');
+                        });
+                    } else {
+                        speakText("Spróbuj jeszcze raz.", () => {
+                            gameBtns.forEach(b => b.style.pointerEvents = 'auto');
+                        });
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
