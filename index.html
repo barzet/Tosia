@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gry Tosia</title>
+    <style>
+        :root {
+            --bg: #f0f0f5; --text: #282828; --accent: #2196F3;
+            --doman-red: #E53935; --success: #4CAF50; --error: #F44336;
+        }
+        body, html {
+            margin: 0; padding: 0; height: 100%; font-family: 'Verdana', sans-serif;
+            background-color: var(--bg); color: var(--text); overflow: hidden;
+            display: flex; flex-direction: column; user-select: none;
+            transition: background-color 0.5s;
+        }
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 20px; box-sizing: border-box; z-index: 10;}
+        .active { display: flex; }
+        h1 { font-size: 2.5rem; margin-bottom: 30px; }
+        
+        .big-word { font-size: 4.5rem; font-weight: bold; color: var(--doman-red); margin: 30px 0; }
+        .big-emoji { font-size: 8rem; margin: 20px 0; line-height: 1; }
+        .syllable-target { background: var(--accent); color: white; padding: 20px 40px; border-radius: 20px; font-size: 4rem; margin-bottom: 30px; font-weight: bold; transition: all 0.5s;}
+        
+        .btn-listen { font-size: 6rem; background: none; border: none; cursor: pointer; margin: 20px 0; transition: transform 0.2s; filter: drop-shadow(0px 4px 0px rgba(0,0,0,0.2)); }
+        .btn-listen:active { transform: scale(0.9) translateY(4px); filter: drop-shadow(0px 0px 0px rgba(0,0,0,0)); }
+
+        .options-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; width: 100%; max-width: 800px;}
+        .btn {
+            background: white; border: 3px solid var(--text); border-radius: 20px;
+            padding: 20px 40px; font-size: 2rem; font-weight: bold; color: var(--text);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.2); cursor: pointer; transition: all 0.2s;
+        }
+        .btn:active { transform: translate(4px, 4px); box-shadow: none; }
+        .btn-menu { width: 100%; max-width: 400px; margin-bottom: 20px; }
+        .btn-setting-opt { min-width: 100px; }
+        
+        /* NOWOŚĆ: Przyciski akcji (Dalej / Złącz) */
+        .btn-action { background-color: var(--success); color: white; border-color: #388E3C; margin-top: 40px; }
+        .btn-secondary { background-color: #FFC107; border-color: #FFA000; margin-top: 20px;}
+
+        /* NOWOŚĆ: Interaktywny Tekst Bajki */
+        .story-container { font-size: 2.5rem; line-height: 1.6; padding: 20px; max-width: 800px; font-weight: bold;}
+        .story-word { display: inline-block; margin: 0 8px; cursor: pointer; transition: color 0.2s, transform 0.2s; padding: 5px; border-radius: 10px; }
+        .story-word:active { color: var(--doman-red); transform: scale(1.1); background-color: rgba(229, 57, 53, 0.1); }
+
+        .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 20px; z-index: 20;}
+        .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
+        .score-display { font-size: 1.5rem; font-weight: bold; display: flex; align-items: center; gap: 15px;}
+        
+        .btn-settings { font-size: 1.8rem; background: transparent; border: none; cursor: pointer; opacity: 0.3; transition: opacity 0.2s;}
+        .btn-settings:active { opacity: 1; }
+
+        .medals { position: absolute; bottom: 20px; left: 20px; font-size: 2.2rem; font-weight: bold; pointer-events: none; background: rgba(255, 255, 255, 0.7); padding: 5px 15px; border-radius: 15px; z-index: 20;}
+        .btn-reset { position: absolute; bottom: 20px; right: 20px; font-size: 2rem; background: transparent; border: none; opacity: 0.15; cursor: pointer; z-index: 20;}
+
+        .confetti { position: absolute; width: 15px; height: 15px; background-color: #f2d74e; opacity: 0; z-index: 5;}
+        @keyframes fall {
+            0% { opacity: 1; transform: translateY(-100px) rotate(0deg); }
+            100% { opacity: 1; transform: translateY(100vh) rotate(720deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <button id="btn-settings" class="btn-settings" onclick="showScreen('screen-settings')">⚙️</button>
+        <button id="btn-back" class="btn-back" style="display:none;" onclick="goToMenu()">🔙 Wróć</button>
+        <div class="score-display">Punkty: <span id="score-text">0</span></div>
+    </div>
+    
+    <div class="medals" id="medals-container" style="display: none;"></div>
+    <button class="btn-reset" onclick="resetScore()">🔄</button>
+
+    <div id="screen-settings" class="screen">
+        <h1>Panel Taty 🛠️</h1>
+        <h2>Ilość klocków w quizach:</h2>
+        <div class="options-grid">
+            <button class="btn btn-setting-opt" onclick="setDifficulty(3)">3</button>
+            <button class="btn btn-setting-opt" onclick="setDifficulty(4)">4</button>
+            <button class="btn btn-setting-opt" onclick="setDifficulty(6)">6</button>
+        </div>
+        <p style="margin-top: 20px; opacity: 0.7;" id="current-diff-text">Obecnie: 3</p>
+        <button class="btn btn-menu" style="margin-top: 40px;" onclick="goToMenu()">Zapisz i Wróć</button>
+    </div>
+
+    <div id="screen-main" class="screen active">
+        <h1>Wybierz Zabawę:</h1>
+        <button class="btn btn-menu" onclick="showScreen('screen-doman'); speakText('Zabawy ze słowami.')">Zabawy ze Słowami</button>
+        <button class="btn btn-menu" onclick="showScreen('screen-syllable'); speakText('Zabawy z sylabami.')">Zabawy z Sylabami</button>
+        <button class="btn btn-menu" style="background-color: #FFF9C4;" onclick="showScreen('screen-primer'); speakText('Interaktywny Elementarz.')">Interaktywny Elementarz 📖</button>
+    </div>
+
+    <div id="screen-primer" class="screen">
+        <h1>Elementarz:</h1>
+        <button class="btn btn-menu" onclick="startGame('primer', 'words')">1. Magiczne Słowa</button>
+        <button class="btn btn-menu" onclick="startGame('primer', 'story')">2. Czytaj Bajkę</button>
+    </div>
+
+    <div id="screen-doman" class="screen">
+        <h1>Metoda Domana:</h1>
+        <button class="btn btn-menu" onclick="startGame('doman', 'picture')">1. Obrazek ➡️ Słowo</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'flash')">2. Mrugające Słowo</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'intruder')">3. Znajdź Intruza</button>
+        <button class="btn btn-menu" onclick="startGame('doman', 'listen')">4. Bystre Ucho 🎧</button>
+    </div>
+
+    <div id="screen-syllable" class="screen">
+        <h1>Metoda Sylabowa:</h1>
+        <button class="btn btn-menu" onclick="startGame('syllable', 'ending')">1. Dopasuj Końcówkę</button>
+        <button class="btn btn-menu" onclick="startGame('syllable', 'first')">2. Pierwsza Sylaba</button>
+    </div>
+
+    <div id="screen-game" class="screen">
+        <h2 id="game-instruction" style="opacity: 0.7;">Polecenie</h2>
+        <div id="game-target"></div> 
+        <div id="game-options" class="options-grid"></div> 
+    </div>
+
+    <script>
+        const DICT = {
+            "KOT": { emoji: "🐈", en: "CAT", sylaby: ["KOT"] },
+            "PIES": { emoji: "🐕", en: "DOG", sylaby: ["PIES"] },
+            "KROWA": { emoji: "🐄", en: "COW", sylaby: ["KRO", "WA"] },
+            "JABŁKO": { emoji: "🍎", en: "APPLE", sylaby: ["JA", "BŁKO"] },
+            "AUTO": { emoji: "🚗", en: "CAR", sylaby: ["AU", "TO"] },
+            "BANAN": { emoji: "🍌", en: "BANANA", sylaby: ["BA", "NAN"] },
+            "DOM": { emoji: "🏠", en: "HOUSE", sylaby: ["DOM"] },
+            "WODA": { emoji: "💧", en: "WATER", sylaby: ["WO", "DA"] },
+            "RYBA": { emoji: "🐟", en: "FISH", sylaby: ["RY", "BA"] },
+            "LALKA": { emoji: "🪆", en: "DOLL", sylaby: ["LAL", "KA"] },
+            "SOWA": { emoji: "🦉", en: "OWL", sylaby: ["SO", "WA"] },
+            "KURA": { emoji: "🐔", en: "HEN", sylaby: ["KU", "RA"] }
+        };
+
+        // NOWOŚĆ: Baza Bajek
+        const STORY = [
+            "Dawno, dawno temu, w małym domku.",
+            "Mieszkał sobie rudy kotek.",
+            "Kotek bardzo lubił pić mleko.",
+            "Pewnego dnia kotek poszedł na spacer.",
+            "Spotkał tam dużego psa.",
+            "Pies zaszczekał: Hau hau!",
+            "Ale kotek wcale się nie bał.",
+            "Zostali najlepszymi przyjaciółmi."
+        ];
+
+        const allWords = Object.keys(DICT);
+        const multiSyllableWords = allWords.filter(w => DICT[w].sylaby.length > 1);
+
+        let globalScore = parseInt(localStorage.getItem('tosiaScore')) || 0;
+        let optionsCount = parseInt(localStorage.getItem('tosiaOptionsCount')) || 3;
+        
+        let activeGame = null;
+        let currentTargetWord = ""; 
+        let comboCount = 0;
+        let mistakeCount = 0;
+        let roundNumber = 0;
+        let storyIndex = 0; // Śledzenie na którym zdaniu bajki jesteśmy
+        let roundTimeout = null; 
+        
+        updateScoreUI();
+        document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
+
+        function speakText(text, callback) {
+            window.speechSynthesis.cancel();
+            if(!text) text = ""; 
+            
+            let textForRobot = text.toLowerCase();
+            // Mała łatka: dodajemy kropkę tylko, jeśli jej nie ma (żeby bajki brzmiały naturalnie)
+            if (!textForRobot.endsWith('.') && !textForRobot.endsWith('!') && !textForRobot.endsWith('?')) {
+                textForRobot += ".";
+            }
+
+            const msg = new SpeechSynthesisUtterance(textForRobot);
+            msg.lang = 'pl-PL'; 
+            msg.rate = 0.8; 
+            
+            if (callback) {
+                const fallbackTime = (text.length * 100) + 1200; 
+                let fired = false;
+                msg.onend = () => { if(!fired){ fired = true; callback(); } };
+                setTimeout(() => { if(!fired){ fired = true; callback(); } }, fallbackTime);
+            }
+            window.speechSynthesis.speak(msg);
+        }
+
+        function setDifficulty(num) {
+            optionsCount = num;
+            localStorage.setItem('tosiaOptionsCount', num);
+            document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
+            triggerFeedback(true);
+        }
+
+        function createConfetti() {
+            const colors = ['#f2d74e', '#95c3de', '#ff9a91', '#4caf50', '#2196F3'];
+            for (let i = 0; i < 50; i++) {
+                let conf = document.createElement('div');
+                conf.className = 'confetti';
+                conf.style.left = Math.random() * 100 + 'vw';
+                conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                conf.style.animation = `fall ${Math.random() * 2 + 2}s linear forwards`;
+                document.body.appendChild(conf);
+                setTimeout(() => conf.remove(), 4000); 
+            }
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            
+            document.getElementById('btn-back').style.display = (screenId === 'screen-main' || screenId === 'screen-settings') ? 'none' : 'block';
+            document.getElementById('btn-settings').style.display = (screenId === 'screen-main') ? 'block' : 'none';
+        }
+        
+        function goToMenu() { 
+            activeGame = null;
+            window.speechSynthesis.cancel();
+            if(roundTimeout) clearTimeout(roundTimeout);
+            showScreen('screen-main'); 
+        }
+
+        function updateScoreUI() {
+            document.getElementById('score-text').innerText = globalScore;
+            const medalsCount = Math.floor(globalScore / 3);
+            const mc = document.getElementById('medals-container');
+            if (medalsCount > 0) { mc.style.display = 'block'; mc.innerText = '🌟 x ' + medalsCount; } 
+            else { mc.style.display = 'none'; }
+        }
+
+        function resetScore() {
+            if(confirm("Wyzerować punkty Tosi?")) {
+                globalScore = 0; localStorage.setItem('tosiaScore', 0); updateScoreUI();
+            }
+        }
+
+        function triggerFeedback(isSuccess) {
+            document.body.style.backgroundColor = isSuccess ? 'var(--success)' : 'var(--error)';
+            setTimeout(() => document.body.style.backgroundColor = 'var(--bg)', 600);
+        }
+        function shuffle(array) { return [...array].sort(() => Math.random() - 0.5); }
+
+        function startGame(type, mode) {
+            comboCount = 0; 
+            roundNumber = 0; 
+            storyIndex = 0; // Reset bajki od początku
+            showScreen('screen-game');
+            activeGame = { type, mode };
+            nextRound();
+        }
+
+        /* --- POSTĘP (DLA TRYBÓW BEZ BŁĘDÓW) --- */
+        function advanceExploration() {
+            comboCount++;
+            globalScore++; // Dajemy punkt za bycie ciekawym świata!
+            localStorage.setItem('tosiaScore', globalScore);
+            updateScoreUI();
+            
+            if (comboCount % 5 === 0) {
+                speakText("Wspaniale!", () => createConfetti()); 
+            }
+            
+            if(activeGame.mode === 'story') {
+                storyIndex++;
+                if(storyIndex >= STORY.length) storyIndex = 0; // Zapętlamy bajkę
+            }
+            nextRound();
+        }
+
+        /* --- MAGICZNE SŁOWA (Rozpad i Złączenie) --- */
+        function renderMagicWord(word) {
+            const targetEl = document.getElementById('game-target');
+            const optionsEl = document.getElementById('game-options');
+            
+            // Pokaż wielki klocek całego słowa
+            targetEl.innerHTML = `<button class="btn" style="font-size: 4rem; padding: 40px; color: var(--doman-red);" onclick="breakWord('${word}')">${word}</button>`;
+            optionsEl.innerHTML = `<button class="btn btn-action" onclick="advanceExploration()">Następne Słowo ➡️</button>`;
+        }
+
+        window.breakWord = function(word) {
+            const targetEl = document.getElementById('game-target');
+            const optionsEl = document.getElementById('game-options');
+            const syls = DICT[word].sylaby;
+
+            speakText(word, () => {
+                targetEl.innerHTML = ''; // Znika wielkie słowo
+                optionsEl.innerHTML = '';
+                
+                // Pojawiają się klocki sylab (można je klikać w nieskończoność)
+                syls.forEach(s => {
+                    optionsEl.innerHTML += `<button class="btn" onclick="speakText('${s}')">${s}</button>`;
+                });
+                
+                // Przycisk "Złącz" i "Dalej"
+                optionsEl.innerHTML += `<div style="width: 100%;"></div>`; // Złamanie linii
+                optionsEl.innerHTML += `<button class="btn btn-secondary" onclick="renderMagicWord('${word}')">🔄 Złącz</button>`;
+                optionsEl.innerHTML += `<button class="btn btn-action" onclick="advanceExploration()">Dalej ➡️</button>`;
+            });
+        };
+
+        function nextRound() {
+            if (!activeGame) return; 
+
+            mistakeCount = 0;
+            roundNumber++; 
+            const isFirstRound = (roundNumber === 1); 
+
+            const targetEl = document.getElementById('game-target');
+            const optionsEl = document.getElementById('game-options');
+            const instrEl = document.getElementById('game-instruction');
+            targetEl.innerHTML = ''; optionsEl.innerHTML = '';
+            
+            /* =======================================
+               FAZA 4: INTERAKTYWNY ELEMENTARZ 
+               ======================================= */
+            if (activeGame.type === 'primer') {
+                
+                if (activeGame.mode === 'words') {
+                    instrEl.innerText = "Dotknij słowa, by je rozsypać!";
+                    if(isFirstRound) speakText("Dotknij słowa!");
+                    
+                    currentTargetWord = multiSyllableWords[Math.floor(Math.random() * multiSyllableWords.length)];
+                    renderMagicWord(currentTargetWord);
+                }
+                
+                else if (activeGame.mode === 'story') {
+                    instrEl.innerText = "Słuchaj i dotykaj słów:";
+                    if(isFirstRound) speakText("Słuchaj i dotykaj słów.");
+                    
+                    const sentence = STORY[storyIndex];
+                    
+                    // Czytamy całe zdanie przy wejściu na stronę
+                    roundTimeout = setTimeout(() => { speakText(sentence); }, 1500);
+
+                    // Dzielimy zdanie na słowa, zachowując interpunkcję dla wyświetlania
+                    const wordsArray = sentence.split(" ");
+                    
+                    let htmlBuilder = '<div class="story-container">';
+                    wordsArray.forEach(word => {
+                        // Oczyszczamy słowo z przecinków do czytania przez lektora, gdy dziecko w nie kliknie
+                        const cleanWord = word.replace(/[.,!?]/g, '');
+                        htmlBuilder += `<span class="story-word" onclick="speakText('${cleanWord}')">${word}</span>`;
+                    });
+                    htmlBuilder += '</div>';
+                    
+                    targetEl.innerHTML = htmlBuilder;
+                    optionsEl.innerHTML = `<button class="btn btn-action" onclick="advanceExploration()">Dalej ➡️</button>`;
+                }
+            }
+            /* =======================================
+               POZOSTAŁE TRYBY (Quizy)
+               ======================================= */
+            else if (activeGame.type === 'doman') {
+                currentTargetWord = allWords[Math.floor(Math.random() * allWords.length)];
+                let data = DICT[currentTargetWord];
+                
+                if (activeGame.mode === 'picture') {
+                    instrEl.innerText = "Co to za obrazek?";
+                    if(isFirstRound) speakText("Co to za obrazek?"); 
+                    targetEl.innerHTML = `<div class="big-emoji">${data.emoji}</div>`;
+                    let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, optionsCount - 1);
+                    renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                }
+                else if (activeGame.mode === 'flash') {
+                    instrEl.innerText = "Spójrz uważnie...";
+                    targetEl.innerHTML = `<div class="big-word">${currentTargetWord}</div>`;
+                    roundTimeout = setTimeout(() => {
+                        if (!activeGame) return; 
+                        targetEl.innerHTML = '';
+                        instrEl.innerText = "Gdzie było to słowo?";
+                        if(isFirstRound) speakText("Gdzie było to słowo?");
+                        let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, optionsCount - 1);
+                        renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                    }, 2000);
+                } 
+                else if (activeGame.mode === 'intruder') {
+                    let wrongWords = shuffle(allWords.filter(w => w !== currentTargetWord));
+                    let intruder = wrongWords[0];
+                    currentTargetWord = intruder; 
+                    
+                    instrEl.innerText = "Które słowo nie pasuje?";
+                    if(isFirstRound) speakText("Które słowo nie pasuje?");
+                    
+                    let options = Array(optionsCount - 1).fill(wrongWords[1]);
+                    options.push(intruder);
+                    renderOptions(options, intruder);
+                }
+                else if (activeGame.mode === 'listen') {
+                    instrEl.innerText = "Posłuchaj uważnie:";
+                    targetEl.innerHTML = `<button class="btn-listen" onclick="speakText('${currentTargetWord}')">🔊</button>`;
+                    
+                    if(isFirstRound) {
+                        speakText("Posłuchaj i wybierz.", () => speakText(currentTargetWord)); 
+                    } else {
+                        speakText(currentTargetWord);
+                    }
+
+                    let wrong = shuffle(allWords.filter(w => w !== currentTargetWord)).slice(0, optionsCount - 1);
+                    renderOptions([currentTargetWord, ...wrong], currentTargetWord);
+                }
+            } 
+            else if (activeGame.type === 'syllable') {
+                currentTargetWord = multiSyllableWords[Math.floor(Math.random() * multiSyllableWords.length)];
+                let syl = DICT[currentTargetWord].sylaby;
+                
+                if (activeGame.mode === 'ending') {
+                    instrEl.innerText = "Dopasuj końcówkę:";
+                    if(isFirstRound) speakText("Dopasuj końcówkę.");
+                    
+                    targetEl.innerHTML = `<div class="syllable-target">${syl[0]}</div>`;
+                    let otherEndings = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[1]);
+                    let wrong = shuffle(otherEndings).slice(0, optionsCount - 1);
+                    renderOptions([syl[1], ...wrong], syl[1]);
+                } 
+                else if (activeGame.mode === 'first') {
+                    instrEl.innerText = "Z jakiej sylaby składa się to słowo?";
+                    if(isFirstRound) speakText("Z jakiej sylaby składa się to słowo?");
+                    
+                    targetEl.innerHTML = `<div class="syllable-target">${currentTargetWord}</div>`;
+                    let otherFirsts = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[0]);
+                    let wrong = shuffle(otherFirsts).slice(0, optionsCount - 1);
+                    renderOptions([syl[0], ...wrong], syl[0]);
+                }
+            }
+        }
+
+        function renderOptions(optionsArray, correctAnswer) {
+            const optionsEl = document.getElementById('game-options');
+            shuffle(optionsArray).forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'btn';
+                btn.innerText = opt;
+                btn.onclick = () => checkAnswer(opt, correctAnswer, btn);
+                optionsEl.appendChild(btn);
+            });
+        }
+
+        function checkAnswer(selected, correct, btnElement) {
+            const gameBtns = document.querySelectorAll('#game-options .btn');
+            gameBtns.forEach(b => b.style.pointerEvents = 'none');
+
+            const isCorrect = (selected === correct);
+
+            speakText(selected, () => {
+                if (isCorrect) {
+                    comboCount++;
+                    let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
+                    
+                    if (comboCount % 5 === 0) {
+                        praise = "Ale z ciebie bystrzacha! Wspaniale!";
+                        createConfetti(); 
+                    }
+
+                    if (activeGame && activeGame.type === 'syllable') {
+                        const syls = DICT[currentTargetWord].sylaby;
+                        document.getElementById('game-target').innerHTML = `<div class="syllable-target" style="background-color: var(--success);">${syls.join(' - ')}</div>`;
+                        
+                        speakText(currentTargetWord, () => {
+                            triggerFeedback(true);
+                            speakText(praise, () => {
+                                globalScore++;
+                                localStorage.setItem('tosiaScore', globalScore);
+                                updateScoreUI();
+                                roundTimeout = setTimeout(nextRound, 1000);
+                            });
+                        });
+                    } else {
+                        triggerFeedback(true);
+                        speakText(praise, () => {
+                            globalScore++;
+                            localStorage.setItem('tosiaScore', globalScore);
+                            updateScoreUI();
+                            roundTimeout = setTimeout(nextRound, 1000);
+                        });
+                    }
+
+                } else {
+                    comboCount = 0;
+                    mistakeCount++;
+                    triggerFeedback(false);
+
+                    if (mistakeCount >= 2) {
+                        gameBtns.forEach(b => {
+                            if (b.innerText !== correct) b.style.opacity = '0.3';
+                            else b.style.transform = 'scale(1.1)';
+                        });
+                        speakText("Pomogę ci. Zobacz, to to słowo.", () => {
+                            gameBtns.forEach(b => b.style.pointerEvents = 'auto');
+                        });
+                    } else {
+                        speakText("Spróbuj jeszcze raz.", () => {
+                            gameBtns.forEach(b => b.style.pointerEvents = 'auto');
+                        });
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
