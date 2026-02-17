@@ -43,10 +43,11 @@
         .story-word { display: inline-block; margin: 0 8px; cursor: pointer; transition: color 0.2s, transform 0.2s; padding: 5px; border-radius: 10px; }
         .story-word:active { color: var(--doman-red); transform: scale(1.1); background-color: rgba(229, 57, 53, 0.1); }
 
-        /* NOWOŚĆ: CSS dla Budowniczego Słów */
+        /* BUDOWNICZY SŁÓW - ULEPSZONE KLOCKI */
         .builder-slots { display: flex; gap: 15px; margin-bottom: 40px; justify-content: center; width: 100%;}
-        .builder-slot { width: 90px; height: 90px; border: 4px dashed rgba(40,40,40,0.3); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; background: rgba(255,255,255,0.5); transition: all 0.3s;}
-        .builder-slot.filled { background-color: var(--accent); color: white; border-style: solid; border-color: var(--accent); transform: scale(1.05);}
+        .builder-slot { width: 90px; height: 90px; border: 4px dashed rgba(40,40,40,0.3); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; background: rgba(255,255,255,0.5); transition: all 0.2s;}
+        .builder-slot.filled { background-color: var(--accent); color: white; border-style: solid; border-color: var(--accent); transform: scale(1.05); box-shadow: 0px 4px 0px rgba(0,0,0,0.2);}
+        .builder-slot.filled:active { transform: scale(0.95); box-shadow: none; opacity: 0.8;} /* Efekt wciskania przy cofaniu */
 
         .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 20px; z-index: 20;}
         .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
@@ -162,27 +163,41 @@
         let storyIndex = 0; 
         let roundTimeout = null; 
         
-        // Zmienne do Budowniczego
         let builderTargetSyls = [];
         let builderCurrent = [];
+        let plVoices = []; // Przechowywanie polskich głosów
 
         updateScoreUI();
         document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
 
-        /* OSTATECZNA NAPRAWA LEKTORA */
+        /* --- ŁADOWANIE GŁOSÓW (WYMUSZENIE JĘZYKA POLSKIEGO) --- */
+        function loadVoices() {
+            let voices = window.speechSynthesis.getVoices();
+            plVoices = voices.filter(v => v.lang.includes('pl') || v.lang.includes('PL'));
+        }
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        loadVoices(); // Inicjalizacja na start
+
+        /* --- LEKTOR: TARCZA ANTY-ANGIELSKA --- */
         function speakText(text, callback) {
             window.speechSynthesis.cancel();
             if(!text) text = ""; 
             
-            // Twardy reset: wszystko z małych liter, ucięcie znaków na końcu i wbicie kropki.
-            // Dzięki temu robot nigdy nie przeliteruje sylaby po angielsku (WA -> W-A).
+            // Oczyszczamy tekst, zamieniamy na małe litery. 
+            // Dodajemy przecinek na końcu - tworzy pauzę, ale nie wymusza czytania skrótów jak kropka.
             let textForRobot = text.toLowerCase().trim();
             textForRobot = textForRobot.replace(/[.,!?]+$/, ''); 
-            textForRobot += ".";
+            textForRobot += ",";
 
             const msg = new SpeechSynthesisUtterance(textForRobot);
             msg.lang = 'pl-PL'; 
             msg.rate = 0.8; 
+            
+            // WYMUSZAMY polski głos, żeby iOS nie użył angielskiego!
+            if (plVoices.length > 0) {
+                let bestVoice = plVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Zosia')) || plVoices[0];
+                msg.voice = bestVoice;
+            }
             
             if (callback) {
                 const fallbackTime = (text.length * 100) + 1200; 
@@ -300,62 +315,88 @@
             });
         };
 
-        /* LOGIKA KLIKANIA W BUDOWNICZYM SŁÓW */
+        /* ==========================================
+           BUDOWNICZY SŁÓW: MECHANIZM COFANIA (UNDO)
+           ========================================== */
+        window.updateBuilderSlots = function() {
+            const slotsContainer = document.getElementById('builder-slots');
+            slotsContainer.innerHTML = '';
+            
+            for (let i = 0; i < builderTargetSyls.length; i++) {
+                let slot = document.createElement('div');
+                slot.className = 'builder-slot';
+                
+                if (i < builderCurrent.length) {
+                    // Wypełniony klocek
+                    slot.innerText = builderCurrent[i].syl;
+                    slot.classList.add('filled');
+                    slot.style.cursor = 'pointer';
+                    // Kliknięcie w niego powoduje wyciągnięcie go z powrotem na dół!
+                    slot.onclick = () => removeBuilderSyl(i);
+                }
+                slotsContainer.appendChild(slot);
+            }
+            
+            // Jeśli zapełniono wszystkie sloty - sprawdzamy wynik
+            if (builderCurrent.length === builderTargetSyls.length) {
+                checkBuilderWin();
+            }
+        }
+
+        window.removeBuilderSyl = function(index) {
+            if (index >= builderCurrent.length) return;
+            // Wyciągamy klocek z tablicy "ułożonych"
+            let removedItem = builderCurrent.splice(index, 1)[0];
+            // Przycisk na dole znowu staje się widoczny
+            document.getElementById(removedItem.id).style.visibility = 'visible';
+            // Odświeżamy widok góry
+            updateBuilderSlots();
+        }
+
         window.handleBuilderClick = function(syl, btnId) {
-            if (builderCurrent.length >= builderTargetSyls.length) return; // Blokada klikania jak już ułożono
+            if (builderCurrent.length >= builderTargetSyls.length) return; 
             
             speakText(syl, () => {
                 builderCurrent.push({syl: syl, id: btnId});
-                document.getElementById(btnId).style.visibility = 'hidden'; // Klocek z dołu znika
-                
-                const slotsContainer = document.getElementById('builder-slots');
-                const slots = slotsContainer.querySelectorAll('.builder-slot');
-                
-                // Wstawianie do pustego miejsca na górze
-                const currentSlot = slots[builderCurrent.length - 1];
-                currentSlot.innerText = syl;
-                currentSlot.classList.add('filled');
-                
-                // Sprawdzanie czy już zapełniono wszystkie sloty
-                if (builderCurrent.length === builderTargetSyls.length) {
-                    const builtWord = builderCurrent.map(x => x.syl).join('');
-                    
-                    if (builtWord === currentTargetWord) {
-                        comboCount++;
-                        let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
-                        if (comboCount % 5 === 0) {
-                            praise = "Ale z ciebie bystrzacha! Wspaniale!";
-                            createConfetti(); 
-                        }
-                        
-                        speakText(currentTargetWord, () => {
-                            triggerFeedback(true);
-                            speakText(praise, () => {
-                                globalScore++;
-                                localStorage.setItem('tosiaScore', globalScore);
-                                updateScoreUI();
-                                roundTimeout = setTimeout(nextRound, 1000);
-                            });
-                        });
-                    } else {
-                        comboCount = 0;
-                        mistakeCount++;
-                        triggerFeedback(false);
-                        speakText("Spróbuj jeszcze raz.", () => {
-                            // Rozsypanie klocków po błędzie
-                            builderCurrent.forEach(item => {
-                                document.getElementById(item.id).style.visibility = 'visible';
-                            });
-                            builderCurrent = [];
-                            slots.forEach(slot => {
-                                slot.innerText = '';
-                                slot.classList.remove('filled');
-                            });
-                        });
-                    }
-                }
+                document.getElementById(btnId).style.visibility = 'hidden'; 
+                updateBuilderSlots();
             });
         };
+
+        window.checkBuilderWin = function() {
+            const builtWord = builderCurrent.map(x => x.syl).join('');
+            
+            if (builtWord === currentTargetWord) {
+                comboCount++;
+                let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
+                if (comboCount % 5 === 0) {
+                    praise = "Ale z ciebie bystrzacha! Wspaniale!";
+                    createConfetti(); 
+                }
+                
+                speakText(currentTargetWord, () => {
+                    triggerFeedback(true);
+                    speakText(praise, () => {
+                        globalScore++;
+                        localStorage.setItem('tosiaScore', globalScore);
+                        updateScoreUI();
+                        roundTimeout = setTimeout(nextRound, 1000);
+                    });
+                });
+            } else {
+                comboCount = 0;
+                mistakeCount++;
+                triggerFeedback(false);
+                speakText("Spróbuj jeszcze raz.", () => {
+                    // BŁĄD: Zrzucamy wszystkie klocki z powrotem na dół
+                    builderCurrent.forEach(item => {
+                        document.getElementById(item.id).style.visibility = 'visible';
+                    });
+                    builderCurrent = [];
+                    updateBuilderSlots();
+                });
+            }
+        }
 
         function nextRound() {
             if (!activeGame) return; 
@@ -466,7 +507,6 @@
                     let wrong = shuffle(otherFirsts).slice(0, optionsCount - 1);
                     renderOptions([syl[0], ...wrong], syl[0]);
                 }
-                // NOWY TRYB: BUDOWNICZY SŁÓW 🧱
                 else if (activeGame.mode === 'builder') {
                     instrEl.innerText = "Zbuduj słowo z klocków:";
                     if(isFirstRound) speakText("Zbuduj słowo z klocków.");
@@ -474,27 +514,18 @@
                     builderTargetSyls = syl;
                     builderCurrent = [];
                     
-                    // Obrazek docelowy
                     targetEl.innerHTML = `<div class="big-emoji" style="font-size: 6rem; margin: 10px 0;">${DICT[currentTargetWord].emoji}</div>`;
+                    targetEl.innerHTML += `<div class="builder-slots" id="builder-slots"></div>`;
                     
-                    // Puste sloty na górze
-                    let slotsHtml = `<div class="builder-slots" id="builder-slots">`;
-                    builderTargetSyls.forEach(() => {
-                        slotsHtml += `<div class="builder-slot"></div>`;
-                    });
-                    slotsHtml += `</div>`;
-                    targetEl.innerHTML += slotsHtml;
+                    updateBuilderSlots(); // Generuje puste pola na start
                     
-                    // Obliczanie ilości zmyłek na podstawie trudności Taty (Zawsze min. 1 zmyłka)
                     let distractorsNeeded = optionsCount - builderTargetSyls.length;
                     if (distractorsNeeded < 1) distractorsNeeded = 1; 
                     
                     let otherSyls = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[0]);
                     let distractors = shuffle(otherSyls).slice(0, distractorsNeeded);
-                    
                     let mixedSyls = shuffle([...builderTargetSyls, ...distractors]);
                     
-                    // Generowanie rozsypanych klocków na dole
                     optionsEl.innerHTML = '';
                     mixedSyls.forEach((s, idx) => {
                         let btn = document.createElement('button');
