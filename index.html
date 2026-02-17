@@ -36,14 +36,17 @@
         .btn-menu { width: 100%; max-width: 400px; margin-bottom: 20px; }
         .btn-setting-opt { min-width: 100px; }
         
-        /* NOWOŚĆ: Przyciski akcji (Dalej / Złącz) */
         .btn-action { background-color: var(--success); color: white; border-color: #388E3C; margin-top: 40px; }
         .btn-secondary { background-color: #FFC107; border-color: #FFA000; margin-top: 20px;}
 
-        /* NOWOŚĆ: Interaktywny Tekst Bajki */
         .story-container { font-size: 2.5rem; line-height: 1.6; padding: 20px; max-width: 800px; font-weight: bold;}
         .story-word { display: inline-block; margin: 0 8px; cursor: pointer; transition: color 0.2s, transform 0.2s; padding: 5px; border-radius: 10px; }
         .story-word:active { color: var(--doman-red); transform: scale(1.1); background-color: rgba(229, 57, 53, 0.1); }
+
+        /* NOWOŚĆ: CSS dla Budowniczego Słów */
+        .builder-slots { display: flex; gap: 15px; margin-bottom: 40px; justify-content: center; width: 100%;}
+        .builder-slot { width: 90px; height: 90px; border: 4px dashed rgba(40,40,40,0.3); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; background: rgba(255,255,255,0.5); transition: all 0.3s;}
+        .builder-slot.filled { background-color: var(--accent); color: white; border-style: solid; border-color: var(--accent); transform: scale(1.05);}
 
         .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 20px; z-index: 20;}
         .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
@@ -74,11 +77,11 @@
 
     <div id="screen-settings" class="screen">
         <h1>Panel Taty 🛠️</h1>
-        <h2>Ilość klocków w quizach:</h2>
+        <h2>Poziom trudności (ilość klocków):</h2>
         <div class="options-grid">
-            <button class="btn btn-setting-opt" onclick="setDifficulty(3)">3</button>
-            <button class="btn btn-setting-opt" onclick="setDifficulty(4)">4</button>
-            <button class="btn btn-setting-opt" onclick="setDifficulty(6)">6</button>
+            <button class="btn btn-setting-opt" onclick="setDifficulty(3)">Łatwy (3)</button>
+            <button class="btn btn-setting-opt" onclick="setDifficulty(4)">Średni (4)</button>
+            <button class="btn btn-setting-opt" onclick="setDifficulty(6)">Trudny (6)</button>
         </div>
         <p style="margin-top: 20px; opacity: 0.7;" id="current-diff-text">Obecnie: 3</p>
         <button class="btn btn-menu" style="margin-top: 40px;" onclick="goToMenu()">Zapisz i Wróć</button>
@@ -109,6 +112,7 @@
         <h1>Metoda Sylabowa:</h1>
         <button class="btn btn-menu" onclick="startGame('syllable', 'ending')">1. Dopasuj Końcówkę</button>
         <button class="btn btn-menu" onclick="startGame('syllable', 'first')">2. Pierwsza Sylaba</button>
+        <button class="btn btn-menu" style="background-color: #E3F2FD;" onclick="startGame('syllable', 'builder')">3. Budowniczy Słów 🧱</button>
     </div>
 
     <div id="screen-game" class="screen">
@@ -133,7 +137,6 @@
             "KURA": { emoji: "🐔", en: "HEN", sylaby: ["KU", "RA"] }
         };
 
-        // NOWOŚĆ: Baza Bajek
         const STORY = [
             "Dawno, dawno temu, w małym domku.",
             "Mieszkał sobie rudy kotek.",
@@ -156,21 +159,26 @@
         let comboCount = 0;
         let mistakeCount = 0;
         let roundNumber = 0;
-        let storyIndex = 0; // Śledzenie na którym zdaniu bajki jesteśmy
+        let storyIndex = 0; 
         let roundTimeout = null; 
         
+        // Zmienne do Budowniczego
+        let builderTargetSyls = [];
+        let builderCurrent = [];
+
         updateScoreUI();
         document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
 
+        /* OSTATECZNA NAPRAWA LEKTORA */
         function speakText(text, callback) {
             window.speechSynthesis.cancel();
             if(!text) text = ""; 
             
-            let textForRobot = text.toLowerCase();
-            // Mała łatka: dodajemy kropkę tylko, jeśli jej nie ma (żeby bajki brzmiały naturalnie)
-            if (!textForRobot.endsWith('.') && !textForRobot.endsWith('!') && !textForRobot.endsWith('?')) {
-                textForRobot += ".";
-            }
+            // Twardy reset: wszystko z małych liter, ucięcie znaków na końcu i wbicie kropki.
+            // Dzięki temu robot nigdy nie przeliteruje sylaby po angielsku (WA -> W-A).
+            let textForRobot = text.toLowerCase().trim();
+            textForRobot = textForRobot.replace(/[.,!?]+$/, ''); 
+            textForRobot += ".";
 
             const msg = new SpeechSynthesisUtterance(textForRobot);
             msg.lang = 'pl-PL'; 
@@ -243,16 +251,15 @@
         function startGame(type, mode) {
             comboCount = 0; 
             roundNumber = 0; 
-            storyIndex = 0; // Reset bajki od początku
+            storyIndex = 0; 
             showScreen('screen-game');
             activeGame = { type, mode };
             nextRound();
         }
 
-        /* --- POSTĘP (DLA TRYBÓW BEZ BŁĘDÓW) --- */
         function advanceExploration() {
             comboCount++;
-            globalScore++; // Dajemy punkt za bycie ciekawym świata!
+            globalScore++; 
             localStorage.setItem('tosiaScore', globalScore);
             updateScoreUI();
             
@@ -262,17 +269,14 @@
             
             if(activeGame.mode === 'story') {
                 storyIndex++;
-                if(storyIndex >= STORY.length) storyIndex = 0; // Zapętlamy bajkę
+                if(storyIndex >= STORY.length) storyIndex = 0; 
             }
             nextRound();
         }
 
-        /* --- MAGICZNE SŁOWA (Rozpad i Złączenie) --- */
         function renderMagicWord(word) {
             const targetEl = document.getElementById('game-target');
             const optionsEl = document.getElementById('game-options');
-            
-            // Pokaż wielki klocek całego słowa
             targetEl.innerHTML = `<button class="btn" style="font-size: 4rem; padding: 40px; color: var(--doman-red);" onclick="breakWord('${word}')">${word}</button>`;
             optionsEl.innerHTML = `<button class="btn btn-action" onclick="advanceExploration()">Następne Słowo ➡️</button>`;
         }
@@ -283,18 +287,73 @@
             const syls = DICT[word].sylaby;
 
             speakText(word, () => {
-                targetEl.innerHTML = ''; // Znika wielkie słowo
+                targetEl.innerHTML = ''; 
                 optionsEl.innerHTML = '';
                 
-                // Pojawiają się klocki sylab (można je klikać w nieskończoność)
                 syls.forEach(s => {
                     optionsEl.innerHTML += `<button class="btn" onclick="speakText('${s}')">${s}</button>`;
                 });
                 
-                // Przycisk "Złącz" i "Dalej"
-                optionsEl.innerHTML += `<div style="width: 100%;"></div>`; // Złamanie linii
+                optionsEl.innerHTML += `<div style="width: 100%;"></div>`; 
                 optionsEl.innerHTML += `<button class="btn btn-secondary" onclick="renderMagicWord('${word}')">🔄 Złącz</button>`;
                 optionsEl.innerHTML += `<button class="btn btn-action" onclick="advanceExploration()">Dalej ➡️</button>`;
+            });
+        };
+
+        /* LOGIKA KLIKANIA W BUDOWNICZYM SŁÓW */
+        window.handleBuilderClick = function(syl, btnId) {
+            if (builderCurrent.length >= builderTargetSyls.length) return; // Blokada klikania jak już ułożono
+            
+            speakText(syl, () => {
+                builderCurrent.push({syl: syl, id: btnId});
+                document.getElementById(btnId).style.visibility = 'hidden'; // Klocek z dołu znika
+                
+                const slotsContainer = document.getElementById('builder-slots');
+                const slots = slotsContainer.querySelectorAll('.builder-slot');
+                
+                // Wstawianie do pustego miejsca na górze
+                const currentSlot = slots[builderCurrent.length - 1];
+                currentSlot.innerText = syl;
+                currentSlot.classList.add('filled');
+                
+                // Sprawdzanie czy już zapełniono wszystkie sloty
+                if (builderCurrent.length === builderTargetSyls.length) {
+                    const builtWord = builderCurrent.map(x => x.syl).join('');
+                    
+                    if (builtWord === currentTargetWord) {
+                        comboCount++;
+                        let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
+                        if (comboCount % 5 === 0) {
+                            praise = "Ale z ciebie bystrzacha! Wspaniale!";
+                            createConfetti(); 
+                        }
+                        
+                        speakText(currentTargetWord, () => {
+                            triggerFeedback(true);
+                            speakText(praise, () => {
+                                globalScore++;
+                                localStorage.setItem('tosiaScore', globalScore);
+                                updateScoreUI();
+                                roundTimeout = setTimeout(nextRound, 1000);
+                            });
+                        });
+                    } else {
+                        comboCount = 0;
+                        mistakeCount++;
+                        triggerFeedback(false);
+                        speakText("Spróbuj jeszcze raz.", () => {
+                            // Rozsypanie klocków po błędzie
+                            builderCurrent.forEach(item => {
+                                document.getElementById(item.id).style.visibility = 'visible';
+                            });
+                            builderCurrent = [];
+                            slots.forEach(slot => {
+                                slot.innerText = '';
+                                slot.classList.remove('filled');
+                            });
+                        });
+                    }
+                }
             });
         };
 
@@ -310,34 +369,23 @@
             const instrEl = document.getElementById('game-instruction');
             targetEl.innerHTML = ''; optionsEl.innerHTML = '';
             
-            /* =======================================
-               FAZA 4: INTERAKTYWNY ELEMENTARZ 
-               ======================================= */
             if (activeGame.type === 'primer') {
-                
                 if (activeGame.mode === 'words') {
                     instrEl.innerText = "Dotknij słowa, by je rozsypać!";
                     if(isFirstRound) speakText("Dotknij słowa!");
-                    
                     currentTargetWord = multiSyllableWords[Math.floor(Math.random() * multiSyllableWords.length)];
                     renderMagicWord(currentTargetWord);
                 }
-                
                 else if (activeGame.mode === 'story') {
                     instrEl.innerText = "Słuchaj i dotykaj słów:";
                     if(isFirstRound) speakText("Słuchaj i dotykaj słów.");
                     
                     const sentence = STORY[storyIndex];
-                    
-                    // Czytamy całe zdanie przy wejściu na stronę
                     roundTimeout = setTimeout(() => { speakText(sentence); }, 1500);
 
-                    // Dzielimy zdanie na słowa, zachowując interpunkcję dla wyświetlania
                     const wordsArray = sentence.split(" ");
-                    
                     let htmlBuilder = '<div class="story-container">';
                     wordsArray.forEach(word => {
-                        // Oczyszczamy słowo z przecinków do czytania przez lektora, gdy dziecko w nie kliknie
                         const cleanWord = word.replace(/[.,!?]/g, '');
                         htmlBuilder += `<span class="story-word" onclick="speakText('${cleanWord}')">${word}</span>`;
                     });
@@ -347,9 +395,6 @@
                     optionsEl.innerHTML = `<button class="btn btn-action" onclick="advanceExploration()">Dalej ➡️</button>`;
                 }
             }
-            /* =======================================
-               POZOSTAŁE TRYBY (Quizy)
-               ======================================= */
             else if (activeGame.type === 'doman') {
                 currentTargetWord = allWords[Math.floor(Math.random() * allWords.length)];
                 let data = DICT[currentTargetWord];
@@ -420,6 +465,45 @@
                     let otherFirsts = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[0]);
                     let wrong = shuffle(otherFirsts).slice(0, optionsCount - 1);
                     renderOptions([syl[0], ...wrong], syl[0]);
+                }
+                // NOWY TRYB: BUDOWNICZY SŁÓW 🧱
+                else if (activeGame.mode === 'builder') {
+                    instrEl.innerText = "Zbuduj słowo z klocków:";
+                    if(isFirstRound) speakText("Zbuduj słowo z klocków.");
+                    
+                    builderTargetSyls = syl;
+                    builderCurrent = [];
+                    
+                    // Obrazek docelowy
+                    targetEl.innerHTML = `<div class="big-emoji" style="font-size: 6rem; margin: 10px 0;">${DICT[currentTargetWord].emoji}</div>`;
+                    
+                    // Puste sloty na górze
+                    let slotsHtml = `<div class="builder-slots" id="builder-slots">`;
+                    builderTargetSyls.forEach(() => {
+                        slotsHtml += `<div class="builder-slot"></div>`;
+                    });
+                    slotsHtml += `</div>`;
+                    targetEl.innerHTML += slotsHtml;
+                    
+                    // Obliczanie ilości zmyłek na podstawie trudności Taty (Zawsze min. 1 zmyłka)
+                    let distractorsNeeded = optionsCount - builderTargetSyls.length;
+                    if (distractorsNeeded < 1) distractorsNeeded = 1; 
+                    
+                    let otherSyls = multiSyllableWords.filter(w => w !== currentTargetWord).map(w => DICT[w].sylaby[0]);
+                    let distractors = shuffle(otherSyls).slice(0, distractorsNeeded);
+                    
+                    let mixedSyls = shuffle([...builderTargetSyls, ...distractors]);
+                    
+                    // Generowanie rozsypanych klocków na dole
+                    optionsEl.innerHTML = '';
+                    mixedSyls.forEach((s, idx) => {
+                        let btn = document.createElement('button');
+                        btn.className = 'btn';
+                        btn.innerText = s;
+                        btn.id = 'build-btn-' + idx;
+                        btn.onclick = () => handleBuilderClick(s, btn.id);
+                        optionsEl.appendChild(btn);
+                    });
                 }
             }
         }
