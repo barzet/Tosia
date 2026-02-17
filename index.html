@@ -43,11 +43,10 @@
         .story-word { display: inline-block; margin: 0 8px; cursor: pointer; transition: color 0.2s, transform 0.2s; padding: 5px; border-radius: 10px; }
         .story-word:active { color: var(--doman-red); transform: scale(1.1); background-color: rgba(229, 57, 53, 0.1); }
 
-        /* BUDOWNICZY SŁÓW - ULEPSZONE KLOCKI */
         .builder-slots { display: flex; gap: 15px; margin-bottom: 40px; justify-content: center; width: 100%;}
         .builder-slot { width: 90px; height: 90px; border: 4px dashed rgba(40,40,40,0.3); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; background: rgba(255,255,255,0.5); transition: all 0.2s;}
         .builder-slot.filled { background-color: var(--accent); color: white; border-style: solid; border-color: var(--accent); transform: scale(1.05); box-shadow: 0px 4px 0px rgba(0,0,0,0.2);}
-        .builder-slot.filled:active { transform: scale(0.95); box-shadow: none; opacity: 0.8;} /* Efekt wciskania przy cofaniu */
+        .builder-slot.filled:active { transform: scale(0.95); box-shadow: none; opacity: 0.8;}
 
         .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 20px; z-index: 20;}
         .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
@@ -165,37 +164,46 @@
         
         let builderTargetSyls = [];
         let builderCurrent = [];
-        let plVoices = []; // Przechowywanie polskich głosów
+        let plVoices = []; 
 
         updateScoreUI();
         document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
 
-        /* --- ŁADOWANIE GŁOSÓW (WYMUSZENIE JĘZYKA POLSKIEGO) --- */
+        /* --- AGRESYWNE ŁADOWANIE GŁOSÓW (DLA CHROME) --- */
         function loadVoices() {
             let voices = window.speechSynthesis.getVoices();
-            plVoices = voices.filter(v => v.lang.includes('pl') || v.lang.includes('PL'));
+            plVoices = voices.filter(v => v.lang === 'pl-PL' || v.lang === 'pl_PL' || v.lang.includes('pl'));
         }
         window.speechSynthesis.onvoiceschanged = loadVoices;
-        loadVoices(); // Inicjalizacja na start
+        loadVoices(); 
 
-        /* --- LEKTOR: TARCZA ANTY-ANGIELSKA --- */
+        /* --- LEKTOR: ULEPSZONA TARCZA --- */
         function speakText(text, callback) {
             window.speechSynthesis.cancel();
             if(!text) text = ""; 
             
-            // Oczyszczamy tekst, zamieniamy na małe litery. 
-            // Dodajemy przecinek na końcu - tworzy pauzę, ale nie wymusza czytania skrótów jak kropka.
+            // Jeśli Chrome zgubił głosy, wymuszamy pobranie ich tu i teraz
+            if(plVoices.length === 0) loadVoices();
+
             let textForRobot = text.toLowerCase().trim();
             textForRobot = textForRobot.replace(/[.,!?]+$/, ''); 
-            textForRobot += ",";
+            
+            // Hack: Dla krótkich sylab dajemy spację (Chrome to lubi). Dla całych zdań kropkę.
+            if (textForRobot.length <= 3) {
+                textForRobot += " ";
+            } else {
+                textForRobot += ".";
+            }
 
             const msg = new SpeechSynthesisUtterance(textForRobot);
             msg.lang = 'pl-PL'; 
             msg.rate = 0.8; 
             
-            // WYMUSZAMY polski głos, żeby iOS nie użył angielskiego!
+            // Wymuszanie głosu z naciskiem na "Google polski" dla komputerów
             if (plVoices.length > 0) {
-                let bestVoice = plVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Zosia')) || plVoices[0];
+                let bestVoice = plVoices.find(v => v.name.includes('Google')) || // Priorytet nr 1: Chrome PC
+                                plVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Zosia')) || // Priorytet nr 2: iOS
+                                plVoices[0]; // Zapas
                 msg.voice = bestVoice;
             }
             
@@ -315,9 +323,6 @@
             });
         };
 
-        /* ==========================================
-           BUDOWNICZY SŁÓW: MECHANIZM COFANIA (UNDO)
-           ========================================== */
         window.updateBuilderSlots = function() {
             const slotsContainer = document.getElementById('builder-slots');
             slotsContainer.innerHTML = '';
@@ -327,17 +332,14 @@
                 slot.className = 'builder-slot';
                 
                 if (i < builderCurrent.length) {
-                    // Wypełniony klocek
                     slot.innerText = builderCurrent[i].syl;
                     slot.classList.add('filled');
                     slot.style.cursor = 'pointer';
-                    // Kliknięcie w niego powoduje wyciągnięcie go z powrotem na dół!
                     slot.onclick = () => removeBuilderSyl(i);
                 }
                 slotsContainer.appendChild(slot);
             }
             
-            // Jeśli zapełniono wszystkie sloty - sprawdzamy wynik
             if (builderCurrent.length === builderTargetSyls.length) {
                 checkBuilderWin();
             }
@@ -345,11 +347,8 @@
 
         window.removeBuilderSyl = function(index) {
             if (index >= builderCurrent.length) return;
-            // Wyciągamy klocek z tablicy "ułożonych"
             let removedItem = builderCurrent.splice(index, 1)[0];
-            // Przycisk na dole znowu staje się widoczny
             document.getElementById(removedItem.id).style.visibility = 'visible';
-            // Odświeżamy widok góry
             updateBuilderSlots();
         }
 
@@ -388,7 +387,6 @@
                 mistakeCount++;
                 triggerFeedback(false);
                 speakText("Spróbuj jeszcze raz.", () => {
-                    // BŁĄD: Zrzucamy wszystkie klocki z powrotem na dół
                     builderCurrent.forEach(item => {
                         document.getElementById(item.id).style.visibility = 'visible';
                     });
@@ -517,7 +515,7 @@
                     targetEl.innerHTML = `<div class="big-emoji" style="font-size: 6rem; margin: 10px 0;">${DICT[currentTargetWord].emoji}</div>`;
                     targetEl.innerHTML += `<div class="builder-slots" id="builder-slots"></div>`;
                     
-                    updateBuilderSlots(); // Generuje puste pola na start
+                    updateBuilderSlots(); 
                     
                     let distractorsNeeded = optionsCount - builderTargetSyls.length;
                     if (distractorsNeeded < 1) distractorsNeeded = 1; 
