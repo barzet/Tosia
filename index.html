@@ -29,7 +29,7 @@
         .options-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; width: 100%; max-width: 800px;}
         .btn {
             background: white; border: 3px solid var(--text); border-radius: 20px;
-            padding: 20px 40px; font-size: 2rem; font-weight: bold; color: var(--text);
+            padding: 20px 40px; font-size: 2rem; font-weight: bold; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 10px;
             box-shadow: 4px 4px 0px rgba(0,0,0,0.2); cursor: pointer; transition: all 0.2s;
         }
         .btn:active { transform: translate(4px, 4px); box-shadow: none; }
@@ -47,6 +47,12 @@
         .builder-slot { width: 90px; height: 90px; border: 4px dashed rgba(40,40,40,0.3); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; background: rgba(255,255,255,0.5); transition: all 0.2s;}
         .builder-slot.filled { background-color: var(--accent); color: white; border-style: solid; border-color: var(--accent); transform: scale(1.05); box-shadow: 0px 4px 0px rgba(0,0,0,0.2);}
         .builder-slot.filled:active { transform: scale(0.95); box-shadow: none; opacity: 0.8;}
+
+        /* NOWOŚĆ: CSS do animacji kolorów */
+        .color-stage { display: flex; align-items: center; justify-content: center; gap: 20px; margin: 40px 0; position: relative;}
+        .color-circle { width: 120px; height: 120px; border-radius: 50%; border: 6px solid #fff; box-shadow: 0px 8px 15px rgba(0,0,0,0.2); transition: all 1s ease-in-out; z-index: 2; position: relative; }
+        .color-plus { font-size: 4rem; font-weight: bold; color: var(--text); transition: opacity 0.5s; z-index: 1;}
+        .color-dot { width: 20px; height: 20px; border-radius: 50%; display: inline-block; border: 2px solid rgba(0,0,0,0.2);}
 
         .top-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 20px; z-index: 20;}
         .btn-back { font-size: 1.2rem; padding: 10px 20px; border-radius: 10px; background: white; border: 2px solid var(--text); font-weight: bold; cursor: pointer; }
@@ -92,6 +98,7 @@
         <button class="btn btn-menu" onclick="showScreen('screen-doman'); speakText('Zabawy ze słowami.')">Zabawy ze Słowami</button>
         <button class="btn btn-menu" onclick="showScreen('screen-syllable'); speakText('Zabawy z sylabami.')">Zabawy z Sylabami</button>
         <button class="btn btn-menu" style="background-color: #FFF9C4;" onclick="showScreen('screen-primer'); speakText('Interaktywny Elementarz.')">Interaktywny Elementarz 📖</button>
+        <button class="btn btn-menu" style="background-color: #FFCDD2; border-color: #C62828;" onclick="startGame('colors', 'mix'); speakText('Magia Kolorów.')">Magia Kolorów 🎨</button>
     </div>
 
     <div id="screen-primer" class="screen">
@@ -148,6 +155,30 @@
             "Zostali najlepszymi przyjaciółmi."
         ];
 
+        /* BAZA KOLORÓW */
+        const COLORS = {
+            "czerwony": "#F44336",
+            "niebieski": "#2196F3",
+            "żółty": "#FFEB3B",
+            "zielony": "#4CAF50",
+            "pomarańczowy": "#FF9800",
+            "fioletowy": "#9C27B0",
+            "różowy": "#E91E63",
+            "biały": "#FFFFFF",
+            "czarny": "#333333",
+            "szary": "#9E9E9E",
+            "brązowy": "#795548"
+        };
+
+        const COLOR_MIXES = [
+            { a: "czerwony", b: "żółty", res: "pomarańczowy" },
+            { a: "niebieski", b: "żółty", res: "zielony" },
+            { a: "czerwony", b: "niebieski", res: "fioletowy" },
+            { a: "czerwony", b: "biały", res: "różowy" },
+            { a: "czarny", b: "biały", res: "szary" },
+            { a: "czerwony", b: "zielony", res: "brązowy" }
+        ];
+
         const allWords = Object.keys(DICT);
         const multiSyllableWords = allWords.filter(w => DICT[w].sylaby.length > 1);
 
@@ -156,6 +187,7 @@
         
         let activeGame = null;
         let currentTargetWord = ""; 
+        let currentMix = null; // Dla kolorów
         let comboCount = 0;
         let mistakeCount = 0;
         let roundNumber = 0;
@@ -169,7 +201,6 @@
         updateScoreUI();
         document.getElementById('current-diff-text').innerText = "Obecnie: " + optionsCount;
 
-        /* --- AGRESYWNE ŁADOWANIE GŁOSÓW (DLA CHROME) --- */
         function loadVoices() {
             let voices = window.speechSynthesis.getVoices();
             plVoices = voices.filter(v => v.lang === 'pl-PL' || v.lang === 'pl_PL' || v.lang.includes('pl'));
@@ -177,18 +208,13 @@
         window.speechSynthesis.onvoiceschanged = loadVoices;
         loadVoices(); 
 
-        /* --- LEKTOR: ULEPSZONA TARCZA --- */
         function speakText(text, callback) {
             window.speechSynthesis.cancel();
             if(!text) text = ""; 
             
-            // Jeśli Chrome zgubił głosy, wymuszamy pobranie ich tu i teraz
-            if(plVoices.length === 0) loadVoices();
-
             let textForRobot = text.toLowerCase().trim();
             textForRobot = textForRobot.replace(/[.,!?]+$/, ''); 
             
-            // Hack: Dla krótkich sylab dajemy spację (Chrome to lubi). Dla całych zdań kropkę.
             if (textForRobot.length <= 3) {
                 textForRobot += " ";
             } else {
@@ -199,11 +225,10 @@
             msg.lang = 'pl-PL'; 
             msg.rate = 0.8; 
             
-            // Wymuszanie głosu z naciskiem na "Google polski" dla komputerów
             if (plVoices.length > 0) {
-                let bestVoice = plVoices.find(v => v.name.includes('Google')) || // Priorytet nr 1: Chrome PC
-                                plVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Zosia')) || // Priorytet nr 2: iOS
-                                plVoices[0]; // Zapas
+                let bestVoice = plVoices.find(v => v.name.includes('Google')) || 
+                                plVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Zosia')) || 
+                                plVoices[0]; 
                 msg.voice = bestVoice;
             }
             
@@ -354,7 +379,6 @@
 
         window.handleBuilderClick = function(syl, btnId) {
             if (builderCurrent.length >= builderTargetSyls.length) return; 
-            
             speakText(syl, () => {
                 builderCurrent.push({syl: syl, id: btnId});
                 document.getElementById(btnId).style.visibility = 'hidden'; 
@@ -408,7 +432,38 @@
             const instrEl = document.getElementById('game-instruction');
             targetEl.innerHTML = ''; optionsEl.innerHTML = '';
             
-            if (activeGame.type === 'primer') {
+            if (activeGame.type === 'colors') {
+                // TRYB MAGIA KOLORÓW 🎨
+                currentMix = COLOR_MIXES[Math.floor(Math.random() * COLOR_MIXES.length)];
+                
+                instrEl.innerText = "Jaki kolor powstanie?";
+                if(isFirstRound) speakText("Jaki kolor powstanie po połączeniu?");
+                
+                // Rysujemy dwa kółka z plusem
+                targetEl.innerHTML = `
+                    <div class="color-stage" id="color-stage">
+                        <div id="col-a" class="color-circle" style="background-color: ${COLORS[currentMix.a]};"></div>
+                        <div id="col-plus" class="color-plus">+</div>
+                        <div id="col-b" class="color-circle" style="background-color: ${COLORS[currentMix.b]};"></div>
+                    </div>
+                `;
+
+                // Opcje z kropką kolorystyczną
+                let allColorNames = Object.keys(COLORS).filter(c => c !== currentMix.res && c !== currentMix.a && c !== currentMix.b);
+                let wrong = shuffle(allColorNames).slice(0, optionsCount - 1);
+                let options = shuffle([currentMix.res, ...wrong]);
+
+                options.forEach(opt => {
+                    let btn = document.createElement('button');
+                    btn.className = 'btn';
+                    // Dodajemy małą kropkę obok nazwy koloru!
+                    btn.innerHTML = `<span class="color-dot" style="background-color: ${COLORS[opt]};"></span> ${opt}`;
+                    btn.onclick = () => checkAnswer(opt, currentMix.res, btn);
+                    optionsEl.appendChild(btn);
+                });
+
+            }
+            else if (activeGame.type === 'primer') {
                 if (activeGame.mode === 'words') {
                     instrEl.innerText = "Dotknij słowa, by je rozsypać!";
                     if(isFirstRound) speakText("Dotknij słowa!");
@@ -560,11 +615,37 @@
                     let praise = ["Super!", "Brawo!", "Świetnie!"][Math.floor(Math.random() * 3)];
                     
                     if (comboCount % 5 === 0) {
-                        praise = "Ale z ciebie bystrzacha! Wspaniale!";
+                        praise = "Wspaniale!";
                         createConfetti(); 
                     }
 
-                    if (activeGame && activeGame.type === 'syllable') {
+                    // --- ANIMACJA DLA KOLORÓW ---
+                    if (activeGame && activeGame.type === 'colors') {
+                        let ca = document.getElementById('col-a');
+                        let cb = document.getElementById('col-b');
+                        let cp = document.getElementById('col-plus');
+                        
+                        cp.style.opacity = 0; // Znikanie plusa
+                        ca.style.transform = 'translateX(70px)'; // Zjeżdżanie się do środka
+                        cb.style.transform = 'translateX(-70px)';
+                        
+                        setTimeout(() => {
+                            // Nakładanie się i zmiana koloru w wynikowy + powiększenie
+                            ca.style.backgroundColor = COLORS[currentMix.res];
+                            cb.style.backgroundColor = COLORS[currentMix.res];
+                            ca.style.transform = 'translateX(70px) scale(1.2)';
+                            cb.style.transform = 'translateX(-70px) scale(1.2)';
+                            
+                            triggerFeedback(true);
+                            speakText(`To ${currentMix.res}!`, () => {
+                                globalScore++;
+                                localStorage.setItem('tosiaScore', globalScore);
+                                updateScoreUI();
+                                roundTimeout = setTimeout(nextRound, 1200);
+                            });
+                        }, 500); // Wykonuje się w połowie przesuwania kółek!
+
+                    } else if (activeGame && activeGame.type === 'syllable') {
                         const syls = DICT[currentTargetWord].sylaby;
                         document.getElementById('game-target').innerHTML = `<div class="syllable-target" style="background-color: var(--success);">${syls.join(' - ')}</div>`;
                         
@@ -594,7 +675,7 @@
 
                     if (mistakeCount >= 2) {
                         gameBtns.forEach(b => {
-                            if (b.innerText !== correct) b.style.opacity = '0.3';
+                            if (b.innerText.trim() !== correct) b.style.opacity = '0.3';
                             else b.style.transform = 'scale(1.1)';
                         });
                         speakText("Pomogę ci. Zobacz, to to słowo.", () => {
